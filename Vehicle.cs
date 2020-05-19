@@ -1,0 +1,384 @@
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using Unity.Collections;
+using UnityEngine;
+
+public class Vehicle : MonoBehaviour
+{
+    private const int VIEW_DISTANCE = 6;
+    private enum TURN { LEFT, RIGHT, STRAIGHT, BACK };
+    private const int DETECTION_DISTANCE = 2;
+    [SerializeField] private int maxSpeed = 9;
+    [SerializeField] private int currentSpeed = 6;
+    [SerializeField] private bool executingCoroutine = false;
+
+    void Start()
+    {
+
+    }
+
+    void Update()
+    {
+        DetectRoadAhead();
+        MoveVehicle();
+        DetectObstacles();
+    }
+
+    private void DebugRays()
+    {
+        Vector3 ray1 = transform.forward * DETECTION_DISTANCE;
+        ray1.y = ray1.y - 0.6f;
+        Debug.DrawRay(transform.position + new Vector3(0, 2.8f, 0), ray1 * 8, Color.cyan);
+
+    }
+
+    private void DetectObstacles()
+    {
+        if (!executingCoroutine)
+        {
+            Vector3 collisionDetector = transform.forward * VIEW_DISTANCE;
+            RaycastHit hit;
+            Ray drivingRay = new Ray(transform.position + new Vector3(0, 2.8f, 0), collisionDetector);
+            Debug.DrawRay(transform.position + new Vector3(0, 1f, 0), collisionDetector, Color.red);
+
+            if (Physics.Raycast(drivingRay, out hit, VIEW_DISTANCE))
+            {
+                GameObject objectFound = hit.transform.gameObject;
+                currentSpeed = 0;
+            }
+            else
+            {
+                currentSpeed = maxSpeed;
+            }
+        }
+    }
+
+    private GameObject DetectRoadAhead()
+    {
+        GameObject objectFound = null;
+        Vector3 roadDectector = transform.forward * DETECTION_DISTANCE;
+        roadDectector.y -= 0.6f; ;
+
+        RaycastHit hit;
+        Ray drivingRay = new Ray(transform.position + new Vector3(0, 2.8f, 0), roadDectector);
+        Debug.DrawRay(transform.position + new Vector3(0, 2.8f, 0), roadDectector * 8, Color.yellow);
+
+        if (Physics.Raycast(drivingRay, out hit))
+        {
+            objectFound = hit.transform.gameObject;
+
+            if (objectFound.GetComponent<CrossRoad>() != null)
+            {
+                if (!executingCoroutine) // TO-DO check to move this to function level somehow
+                {
+                    CrossRoad crossRoad = objectFound.GetComponent<CrossRoad>();
+                    Debug.Log("Found a crossroad, taking decisions.");
+
+                    if (crossRoad.IsRoadOccupied(gameObject.GetInstanceID()))
+                    {
+                        // Coroutine to wait and mark as turning
+                        Debug.Log("Stopping at road cross a vehicle is crossing");
+                        StartCoroutine(WaitAtCrossRoad(crossRoad));
+                    }
+                    else
+                    {
+                        // Choose to go straight, left or right
+                        CrossRoad.DIRECTION_FROM directionFrom = GetMyDirectionFrom();
+                        List<CrossRoad.DIRECTION_FROM> possibleDirections = crossRoad.GetPossibleDirections(directionFrom);
+                        int randomChoose = UnityEngine.Random.Range(0, possibleDirections.Count);
+                        CrossRoad.DIRECTION_FROM directionTo = possibleDirections[randomChoose];
+                        TURN turn = GetTurn(directionFrom, directionTo);
+                        switch (turn)
+                        {
+                            case TURN.STRAIGHT:
+                                // Go straight
+                                Debug.Log("Continuing straight");
+                                StartCoroutine(CrossStraight(crossRoad));
+                                break;
+                            case TURN.LEFT:
+                                // Turn left
+                                Debug.Log("Lets go left");
+                                StartCoroutine(GoLeft(crossRoad));
+                                break;
+                            case TURN.RIGHT:
+                                // Turn right
+                                Debug.Log("Lets go right");
+                                StartCoroutine(GoRight(crossRoad));
+                                break;
+                            case TURN.BACK:
+                                // Turn back
+                                Debug.Log("Found a wall doing a 180 turn.");
+                                StartCoroutine(MakeUTurnOnCross(crossRoad));
+                                break;
+                            default:
+                                // Go straight
+                                Debug.Log("[Default] Continuing straight");
+                                StartCoroutine(CrossStraight(crossRoad));
+                                break;
+                        }
+                    }
+                }
+            }
+
+            if (objectFound.CompareTag("Wall"))
+            {
+                if (!executingCoroutine)
+                {
+                    Debug.Log("Found a wall doing a 180 turn.");
+                    StartCoroutine(TurnBack());
+                }
+            }
+        }
+
+        return objectFound;
+    }
+
+    private TURN GetTurn(
+        CrossRoad.DIRECTION_FROM directionFrom,
+        CrossRoad.DIRECTION_FROM directionTo)
+    {
+        switch (directionFrom)
+        {
+            case CrossRoad.DIRECTION_FROM.NORTH:
+                switch (directionTo)
+                {
+                    case CrossRoad.DIRECTION_FROM.NORTH:
+                        return TURN.BACK;
+                    case CrossRoad.DIRECTION_FROM.SOUTH:
+                        return TURN.STRAIGHT;
+                    case CrossRoad.DIRECTION_FROM.EAST:
+                        return TURN.LEFT;
+                    case CrossRoad.DIRECTION_FROM.WEST:
+                        return TURN.RIGHT;
+                    default:
+                        throw new Exception("Unhandled enum option");
+                }
+            case CrossRoad.DIRECTION_FROM.SOUTH:
+                switch (directionTo)
+                {
+                    case CrossRoad.DIRECTION_FROM.NORTH:
+                        return TURN.STRAIGHT;
+                    case CrossRoad.DIRECTION_FROM.SOUTH:
+                        return TURN.BACK;
+                    case CrossRoad.DIRECTION_FROM.EAST:
+                        return TURN.RIGHT;
+                    case CrossRoad.DIRECTION_FROM.WEST:
+                        return TURN.LEFT;
+                    default:
+                        throw new Exception("Unhandled enum option");
+                }
+            case CrossRoad.DIRECTION_FROM.EAST:
+                switch (directionTo)
+                {
+                    case CrossRoad.DIRECTION_FROM.NORTH:
+                        return TURN.RIGHT;
+                    case CrossRoad.DIRECTION_FROM.SOUTH:
+                        return TURN.LEFT;
+                    case CrossRoad.DIRECTION_FROM.EAST:
+                        return TURN.BACK;
+                    case CrossRoad.DIRECTION_FROM.WEST:
+                        return TURN.STRAIGHT;
+                    default:
+                        throw new Exception("Unhandled enum option");
+                }
+            case CrossRoad.DIRECTION_FROM.WEST:
+                switch (directionTo)
+                {
+                    case CrossRoad.DIRECTION_FROM.NORTH:
+                        return TURN.LEFT;
+                    case CrossRoad.DIRECTION_FROM.SOUTH:
+                        return TURN.RIGHT;
+                    case CrossRoad.DIRECTION_FROM.EAST:
+                        return TURN.STRAIGHT;
+                    case CrossRoad.DIRECTION_FROM.WEST:
+                        return TURN.BACK;
+                    default:
+                        throw new Exception("Unhandled enum option");
+                }
+            default:
+                throw new Exception("Unhandled enum option");
+        }
+    }
+
+    private CrossRoad.DIRECTION_FROM GetMyDirectionFrom()
+    {
+        float myRotation = transform.eulerAngles.y;
+        myRotation = myRotation < 0 ? myRotation * -1 : myRotation;
+        myRotation = myRotation % 360;
+
+        if (0 < myRotation && myRotation < 5) //0 o -360
+        {
+            return CrossRoad.DIRECTION_FROM.SOUTH;
+        }
+        else if (85 < myRotation && myRotation < 95) //90
+        {
+            return CrossRoad.DIRECTION_FROM.WEST;
+        }
+        else if (175 < myRotation && myRotation < 185) //180
+        {
+            return CrossRoad.DIRECTION_FROM.NORTH;
+        }
+        else if (265 < myRotation && myRotation < 275) //270
+        {
+            return CrossRoad.DIRECTION_FROM.EAST;
+        }
+        else
+        {
+            throw new Exception("There is something wrong with the direction evaluation");
+        }
+    }
+
+    IEnumerator WaitAtCrossRoad(CrossRoad crossRoad)
+    {
+        executingCoroutine = true;
+        currentSpeed = 0;
+        while (crossRoad.IsRoadOccupied(gameObject.GetInstanceID()))
+        {
+            yield return new WaitForSeconds(0.5f); // What if two cars enter at the same time
+        }
+        currentSpeed = maxSpeed;
+        executingCoroutine = false;
+    }
+
+    IEnumerator TurnBack()
+    {
+        executingCoroutine = true;
+        currentSpeed = 5;
+        Vector3 currentRotation = transform.rotation.eulerAngles;
+        Vector3 rotation = new Vector3(currentRotation.x, currentRotation.y - 180, currentRotation.z);
+
+        // Do turn
+        var fromAngle = transform.rotation;
+        var toAngle = Quaternion.Euler(rotation);
+        while (Quaternion.Angle(fromAngle, toAngle) > 1)
+        {
+            transform.Rotate(new Vector3(0, -1f, 0));
+            fromAngle = transform.rotation;
+            yield return new WaitForSeconds(Time.deltaTime);
+        }
+        transform.rotation.eulerAngles.Set(currentRotation.x, currentRotation.y - 180, currentRotation.z);
+
+        // Go straight to exit cross
+        yield return new WaitForSeconds(1);
+        currentSpeed = maxSpeed;
+        executingCoroutine = false;
+    }
+
+    IEnumerator MakeUTurnOnCross(CrossRoad crossRoad)
+    {
+        executingCoroutine = true;
+        crossRoad.OccupiedByMe(gameObject.GetInstanceID());
+        currentSpeed = 5;
+        Vector3 currentRotation = transform.rotation.eulerAngles;
+        Vector3 rotation = new Vector3(currentRotation.x, currentRotation.y - 180, currentRotation.z);
+
+        // Do turn
+        var fromAngle = transform.rotation;
+        var toAngle = Quaternion.Euler(rotation);
+        while (Quaternion.Angle(fromAngle, toAngle) > 1)
+        {
+            transform.Rotate(new Vector3(0, -1f, 0));
+            fromAngle = transform.rotation;
+            yield return new WaitForSeconds(Time.deltaTime);
+        }
+        transform.rotation.eulerAngles.Set(currentRotation.x, currentRotation.y - 180, currentRotation.z);
+
+        // Go straight to exit cross
+        yield return new WaitForSeconds(2);
+        currentSpeed = maxSpeed;
+        executingCoroutine = false;
+        crossRoad.FreeCrossRoad();
+    }
+
+    IEnumerator CrossStraight(CrossRoad crossRoad)
+    {
+        executingCoroutine = true;
+        crossRoad.OccupiedByMe(gameObject.GetInstanceID());
+        currentSpeed = maxSpeed;
+        // Go straight to exit cross
+        yield return new WaitForSeconds(4);
+        executingCoroutine = false;
+        crossRoad.FreeCrossRoad();
+    }
+
+    IEnumerator GoLeft(CrossRoad crossRoad)
+    {
+        executingCoroutine = true;
+        crossRoad.OccupiedByMe(gameObject.GetInstanceID());
+        Vector3 currentRotation = transform.rotation.eulerAngles;
+        Vector3 rotation = new Vector3(currentRotation.x, currentRotation.y - 90, currentRotation.z);
+        currentSpeed = 5;
+        // Go straigth
+        yield return new WaitForSeconds(4);
+
+        // Do turn
+        var fromAngle = transform.rotation;
+        var toAngle = Quaternion.Euler(rotation);
+        while (Quaternion.Angle(fromAngle, toAngle) > 1)
+        {
+            transform.Rotate(new Vector3(0, -1f, 0));
+            fromAngle = transform.rotation;
+            yield return new WaitForSeconds(Time.deltaTime);
+        }
+        transform.rotation.eulerAngles.Set(currentRotation.x, currentRotation.y - 90, currentRotation.z);
+
+        // Go straight to exit cross
+        yield return new WaitForSeconds(2);
+        currentSpeed = maxSpeed;
+        executingCoroutine = false;
+        crossRoad.FreeCrossRoad();
+    }
+
+    IEnumerator GoRight(CrossRoad crossRoad)
+    {
+        executingCoroutine = true;
+        crossRoad.OccupiedByMe(gameObject.GetInstanceID());
+        Vector3 currentRotation = transform.rotation.eulerAngles;
+        Vector3 rotation = new Vector3(currentRotation.x, currentRotation.y + 90, currentRotation.z);
+        currentSpeed = 5;
+        // Go straigth
+        yield return new WaitForSeconds(2.3f);
+
+        var fromAngle = transform.rotation;
+        var toAngle = Quaternion.Euler(rotation);
+        while (Quaternion.Angle(fromAngle, toAngle) > 0)
+        {
+            transform.Rotate(new Vector3(0, 1f, 0));
+            fromAngle = transform.rotation;
+            yield return new WaitForSeconds(Time.deltaTime);
+        }
+        transform.rotation.eulerAngles.Set(currentRotation.x, currentRotation.y + 90, currentRotation.z);
+
+        // Go straight to exit cross
+        yield return new WaitForSeconds(2);
+        executingCoroutine = false;
+        currentSpeed = maxSpeed;
+        crossRoad.FreeCrossRoad();
+    }
+
+    IEnumerator RotateTransform(Vector3 rotation)
+    {
+        executingCoroutine = true;
+        currentSpeed = 5;
+        Debug.Log("Start coroutine, called to move to: " + rotation + " being in: " + transform.rotation.eulerAngles);
+        var fromAngle = transform.rotation;
+        var toAngle = Quaternion.Euler(rotation);
+        //var toAngle = Quaternion.Euler(transform.eulerAngles + new Vector3(0, 90, 0));
+        while (Quaternion.Angle(fromAngle, toAngle) > 0)
+        {
+            transform.Rotate(new Vector3(0, rotation.y > 0 ? 1f : -1f, 0));
+            fromAngle = transform.rotation;
+            yield return new WaitForSeconds(Time.deltaTime);
+        }
+
+        executingCoroutine = false;
+        Debug.Log("End coroutine");
+        yield return null;
+    }
+
+    private void MoveVehicle()
+    {
+        transform.Translate(Vector3.forward * currentSpeed * Time.deltaTime);
+    }
+}
