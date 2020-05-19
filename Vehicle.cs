@@ -6,7 +6,7 @@ using UnityEngine;
 
 public class Vehicle : MonoBehaviour
 {
-    private const int VIEW_DISTANCE = 6;
+    private const int VIEW_DISTANCE = 8;
     private enum TURN { LEFT, RIGHT, STRAIGHT, BACK };
     private const int DETECTION_DISTANCE = 2;
     [SerializeField] private int maxSpeed = 9;
@@ -39,13 +39,13 @@ public class Vehicle : MonoBehaviour
         {
             Vector3 collisionDetector = transform.forward * VIEW_DISTANCE;
             RaycastHit hit;
-            Ray drivingRay = new Ray(transform.position + new Vector3(0, 2.8f, 0), collisionDetector);
+            Ray drivingRay = new Ray(transform.position + new Vector3(0, 2f, 0), collisionDetector);
             Debug.DrawRay(transform.position + new Vector3(0, 1f, 0), collisionDetector, Color.red);
 
             if (Physics.Raycast(drivingRay, out hit, VIEW_DISTANCE))
             {
                 GameObject objectFound = hit.transform.gameObject;
-                currentSpeed = 0;
+                if (! objectFound.CompareTag("Wall")) currentSpeed = 0;
             }
             else
             {
@@ -58,11 +58,12 @@ public class Vehicle : MonoBehaviour
     {
         GameObject objectFound = null;
         Vector3 roadDectector = transform.forward * DETECTION_DISTANCE;
-        roadDectector.y -= 0.6f; ;
+        Vector3 fromDetector = transform.position + new Vector3(0, 2.8f, 3);
+        roadDectector.y -= 0.7f; ;
 
         RaycastHit hit;
-        Ray drivingRay = new Ray(transform.position + new Vector3(0, 2.8f, 0), roadDectector);
-        Debug.DrawRay(transform.position + new Vector3(0, 2.8f, 0), roadDectector * 8, Color.yellow);
+        Ray drivingRay = new Ray(transform.position + new Vector3(0, 2.5f, 0), roadDectector);
+        Debug.DrawRay(transform.position + new Vector3(0, 2.5f, 0), roadDectector * 8, Color.yellow);
 
         if (Physics.Raycast(drivingRay, out hit))
         {
@@ -107,7 +108,7 @@ public class Vehicle : MonoBehaviour
                                 StartCoroutine(GoRight(crossRoad));
                                 break;
                             case TURN.BACK:
-                                // Turn back
+                                // Turn back: THIS IS NOT ALLOWED AS CROSS TAKES OUT THE ORIGIN
                                 Debug.Log("Found a wall doing a 180 turn.");
                                 StartCoroutine(MakeUTurnOnCross(crossRoad));
                                 break;
@@ -129,6 +130,8 @@ public class Vehicle : MonoBehaviour
                     StartCoroutine(TurnBack());
                 }
             }
+
+            Debug.Log(objectFound.name);
         }
 
         return objectFound;
@@ -211,15 +214,15 @@ public class Vehicle : MonoBehaviour
         {
             return CrossRoad.DIRECTION_FROM.SOUTH;
         }
-        else if (85 < myRotation && myRotation < 95) //90
+        else if (70 < myRotation && myRotation < 110) //90
         {
             return CrossRoad.DIRECTION_FROM.WEST;
         }
-        else if (175 < myRotation && myRotation < 185) //180
+        else if (160 < myRotation && myRotation < 200) //180
         {
             return CrossRoad.DIRECTION_FROM.NORTH;
         }
-        else if (265 < myRotation && myRotation < 275) //270
+        else if (250 < myRotation && myRotation < 290) //270
         {
             return CrossRoad.DIRECTION_FROM.EAST;
         }
@@ -253,11 +256,11 @@ public class Vehicle : MonoBehaviour
         var toAngle = Quaternion.Euler(rotation);
         while (Quaternion.Angle(fromAngle, toAngle) > 1)
         {
-            transform.Rotate(new Vector3(0, -1f, 0));
+            transform.Rotate(new Vector3(0, -1.1f, 0));
             fromAngle = transform.rotation;
             yield return new WaitForSeconds(Time.deltaTime);
         }
-        transform.rotation.eulerAngles.Set(currentRotation.x, currentRotation.y - 180, currentRotation.z);
+        transform.rotation = Quaternion.Euler(currentRotation.x, NormalizeDegrees(currentRotation.y - 180), currentRotation.z);
 
         // Go straight to exit cross
         yield return new WaitForSeconds(1);
@@ -282,7 +285,8 @@ public class Vehicle : MonoBehaviour
             fromAngle = transform.rotation;
             yield return new WaitForSeconds(Time.deltaTime);
         }
-        transform.rotation.eulerAngles.Set(currentRotation.x, currentRotation.y - 180, currentRotation.z);
+        transform.rotation = Quaternion.Euler(currentRotation.x, NormalizeDegrees(currentRotation.y - 180), currentRotation.z);
+
 
         // Go straight to exit cross
         yield return new WaitForSeconds(2);
@@ -310,7 +314,7 @@ public class Vehicle : MonoBehaviour
         Vector3 rotation = new Vector3(currentRotation.x, currentRotation.y - 90, currentRotation.z);
         currentSpeed = 5;
         // Go straigth
-        yield return new WaitForSeconds(4);
+        yield return new WaitForSeconds(3.3f);
 
         // Do turn
         var fromAngle = transform.rotation;
@@ -321,7 +325,7 @@ public class Vehicle : MonoBehaviour
             fromAngle = transform.rotation;
             yield return new WaitForSeconds(Time.deltaTime);
         }
-        transform.rotation.eulerAngles.Set(currentRotation.x, currentRotation.y - 90, currentRotation.z);
+        transform.rotation = Quaternion.Euler(currentRotation.x, NormalizeDegrees(currentRotation.y - 90), currentRotation.z);
 
         // Go straight to exit cross
         yield return new WaitForSeconds(2);
@@ -335,10 +339,11 @@ public class Vehicle : MonoBehaviour
         executingCoroutine = true;
         crossRoad.OccupiedByMe(gameObject.GetInstanceID());
         Vector3 currentRotation = transform.rotation.eulerAngles;
+        //float normalizedAngle = NormalizeDegrees(currentRotation.y + 90);
         Vector3 rotation = new Vector3(currentRotation.x, currentRotation.y + 90, currentRotation.z);
         currentSpeed = 5;
         // Go straigth
-        yield return new WaitForSeconds(2.3f);
+        yield return new WaitForSeconds(1.8f);
 
         var fromAngle = transform.rotation;
         var toAngle = Quaternion.Euler(rotation);
@@ -348,13 +353,34 @@ public class Vehicle : MonoBehaviour
             fromAngle = transform.rotation;
             yield return new WaitForSeconds(Time.deltaTime);
         }
-        transform.rotation.eulerAngles.Set(currentRotation.x, currentRotation.y + 90, currentRotation.z);
+        transform.rotation = Quaternion.Euler(currentRotation.x, NormalizeDegrees(currentRotation.y + 90), currentRotation.z);
 
         // Go straight to exit cross
-        yield return new WaitForSeconds(2);
+        yield return new WaitForSeconds(1.5f);
         executingCoroutine = false;
         currentSpeed = maxSpeed;
         crossRoad.FreeCrossRoad();
+    }
+
+    private float NormalizeDegrees(float angle)
+    {
+        angle = angle > 0 ? angle % 360 : 1 * angle % 360; 
+
+        /*if (angle % 360 < 5 || angle % 0 < 5)
+        {
+            angle = 0;
+        } else if ( angle % 270 < 5)
+        {
+            angle = 270;
+        } else if (angle % 180 < 5)
+        {
+            angle = 180;
+        } else if ( angle % 90 < 5)
+        {
+            angle = 90;
+        }*/
+
+        return angle;
     }
 
     IEnumerator RotateTransform(Vector3 rotation)
