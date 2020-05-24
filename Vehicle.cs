@@ -12,10 +12,13 @@ public class Vehicle : MonoBehaviour
     [SerializeField] private int maxSpeed = 9;
     [SerializeField] private int currentSpeed = 6;
     [SerializeField] private bool executingCoroutine = false;
+    public bool loggerEnabled;
+    public LayerMask roadDetectorLayer;
+    private readonly Logger logger = new Logger(Debug.unityLogger);
 
     void Start()
     {
-
+        logger.logEnabled = loggerEnabled;
     }
 
     void Update()
@@ -62,10 +65,10 @@ public class Vehicle : MonoBehaviour
         roadDectector.y -= 0.7f; ;
 
         RaycastHit hit;
-        Ray drivingRay = new Ray(transform.position + new Vector3(0, 2.5f, 0), roadDectector);
-        Debug.DrawRay(transform.position + new Vector3(0, 2.5f, 0), roadDectector * 8, Color.yellow);
+        Ray drivingRay = new Ray(transform.position + new Vector3(0, 2f, 0), roadDectector);
+        Debug.DrawRay(transform.position + new Vector3(0, 2f, 0), roadDectector * 8, Color.yellow);
 
-        if (Physics.Raycast(drivingRay, out hit))
+        if (Physics.Raycast(drivingRay, out hit, 20, roadDetectorLayer)) // TODO chequear solo el suelo
         {
             objectFound = hit.transform.gameObject;
 
@@ -74,12 +77,12 @@ public class Vehicle : MonoBehaviour
                 if (!executingCoroutine) // TO-DO check to move this to function level somehow
                 {
                     CrossRoad crossRoad = objectFound.GetComponent<CrossRoad>();
-                    Debug.Log("Found a crossroad, taking decisions.");
+                    logger.Log(transform.name + "Found a crossroad, taking decisions.");
 
                     if (crossRoad.IsRoadOccupied(gameObject.GetInstanceID()))
                     {
                         // Coroutine to wait and mark as turning
-                        Debug.Log("Stopping at road cross a vehicle is crossing");
+                        logger.Log("Stopping at road cross a vehicle is crossing");
                         StartCoroutine(WaitAtCrossRoad(crossRoad));
                     }
                     else
@@ -94,27 +97,27 @@ public class Vehicle : MonoBehaviour
                         {
                             case TURN.STRAIGHT:
                                 // Go straight
-                                Debug.Log("Continuing straight");
+                                logger.Log("Continuing straight");
                                 StartCoroutine(CrossStraight(crossRoad));
                                 break;
                             case TURN.LEFT:
                                 // Turn left
-                                Debug.Log("Lets go left");
+                                logger.Log("Lets go left");
                                 StartCoroutine(GoLeft(crossRoad));
                                 break;
                             case TURN.RIGHT:
                                 // Turn right
-                                Debug.Log("Lets go right");
+                                logger.Log("Lets go right");
                                 StartCoroutine(GoRight(crossRoad));
                                 break;
                             case TURN.BACK:
                                 // Turn back: THIS IS NOT ALLOWED AS CROSS TAKES OUT THE ORIGIN
-                                Debug.Log("Found a wall doing a 180 turn.");
+                                logger.Log("Found a wall doing a 180 turn.");
                                 StartCoroutine(MakeUTurnOnCross(crossRoad));
                                 break;
                             default:
                                 // Go straight
-                                Debug.Log("[Default] Continuing straight");
+                                logger.Log("[Default] Continuing straight");
                                 StartCoroutine(CrossStraight(crossRoad));
                                 break;
                         }
@@ -126,12 +129,10 @@ public class Vehicle : MonoBehaviour
             {
                 if (!executingCoroutine)
                 {
-                    Debug.Log("Found a wall doing a 180 turn.");
+                    logger.Log("Found a wall doing a 180 turn.");
                     StartCoroutine(TurnBack());
                 }
             }
-
-            Debug.Log(objectFound.name);
         }
 
         return objectFound;
@@ -210,7 +211,7 @@ public class Vehicle : MonoBehaviour
         myRotation = myRotation < 0 ? myRotation * -1 : myRotation;
         myRotation = myRotation % 360;
 
-        if (0 < myRotation && myRotation < 5) //0 o -360
+        if (-10 < myRotation && myRotation < 15) //0 o -360
         {
             return CrossRoad.DIRECTION_FROM.SOUTH;
         }
@@ -334,6 +335,25 @@ public class Vehicle : MonoBehaviour
         crossRoad.FreeCrossRoad();
     }
 
+    void OnCollisionEnter(Collision collision)
+    {
+        if (collision.transform.CompareTag("Player"))
+        {
+            logger.Log("collided with " + collision.transform.name);
+            collision.collider.transform.SetParent(transform);
+        } 
+    }
+
+    private void OnCollisionExit(Collision collision)
+    {
+        if (collision.transform.CompareTag("Player"))
+        {
+            logger.Log("left " + collision.transform.name);
+            collision.collider.transform.SetParent(null);
+        }
+    }
+
+
     IEnumerator GoRight(CrossRoad crossRoad)
     {
         executingCoroutine = true;
@@ -381,26 +401,6 @@ public class Vehicle : MonoBehaviour
         }*/
 
         return angle;
-    }
-
-    IEnumerator RotateTransform(Vector3 rotation)
-    {
-        executingCoroutine = true;
-        currentSpeed = 5;
-        Debug.Log("Start coroutine, called to move to: " + rotation + " being in: " + transform.rotation.eulerAngles);
-        var fromAngle = transform.rotation;
-        var toAngle = Quaternion.Euler(rotation);
-        //var toAngle = Quaternion.Euler(transform.eulerAngles + new Vector3(0, 90, 0));
-        while (Quaternion.Angle(fromAngle, toAngle) > 0)
-        {
-            transform.Rotate(new Vector3(0, rotation.y > 0 ? 1f : -1f, 0));
-            fromAngle = transform.rotation;
-            yield return new WaitForSeconds(Time.deltaTime);
-        }
-
-        executingCoroutine = false;
-        Debug.Log("End coroutine");
-        yield return null;
     }
 
     private void MoveVehicle()

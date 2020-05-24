@@ -8,6 +8,7 @@ public class MouseLookAround : MonoBehaviour
     public float mouseSensitivity = 150f;
     public Transform playerBody;
     private float xRotation = 0f;
+
     // Start is called before the first frame update
     void Start()
     {
@@ -21,8 +22,18 @@ public class MouseLookAround : MonoBehaviour
         float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * Time.deltaTime;
 
         xRotation -= mouseY;
-        xRotation = Mathf.Clamp(xRotation, -90f, 90f);
+        xRotation = Mathf.Clamp(xRotation, -90f, 30f);
         transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
         playerBody.Rotate(Vector3.up, mouseX);
+    }
+
+    public Vector3 GetCameraRotation()
+    {
+        return new Vector3(transform.rotation.eulerAngles.x, playerBody.rotation.eulerAngles.y, 0);
+    }
+
+    private void FixedUpdate()
+    {
+        
     }
 }

@@ -8,7 +8,7 @@ public class CrossRoad : MonoBehaviour
     [SerializeField] private bool occupied;
     [SerializeField] private int occupiedBy;
     public enum DIRECTION_FROM { EAST, WEST, NORTH, SOUTH};
-    [SerializeField] List<DIRECTION_FROM> directionsAvailable;
+    public List<DIRECTION_FROM> directionsAvailable;
 
     // Start is called before the first frame update
     void Start()
